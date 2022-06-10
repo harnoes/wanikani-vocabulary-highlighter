@@ -1,4 +1,14 @@
 (() => {
+
+	const vocabAssoc = {};
+	chrome.storage.local.get(["wkhighlight_vocab_assoc"], data => {
+		Object.assign(vocabAssoc, data["wkhighlight_vocab_assoc"]);
+	});
+	const kanjiAssoc = {};
+	chrome.storage.local.get(["wkhighlight_kanji_assoc"], data => {
+		Object.assign(kanjiAssoc, data["wkhighlight_kanji_assoc"]);
+	});
+
 	chrome.storage.local.get(["wkhighlight_allkanji", "wkhighlight_allradicals", "wkhighlight_allvocab", "wkhighlight_settings"], result => {
 		chrome.runtime.sendMessage({uptimeDetailsPopup:true});
 
@@ -52,19 +62,22 @@
 				const node = e.target;
 
 				// If hovering over a kanji
-				if ((highlightingClass && node.classList.contains("wkhighlighter_hoverable") && !(detailsPopup.detailsPopup && detailsPopup.detailsPopup.contains(node))) && !detailsPopup.locked) {
+				if ((highlightingClass && node.classList.contains("wkhighlighter_hoverable") && !(detailsPopup.detailsPopup && detailsPopup.detailsPopup.contains(node))) 
+				   && !detailsPopup.locked) {
 					if (!detailsPopup.detailsPopup)
 						detailsPopup.create();
-						
-					chrome.storage.local.get(["wkhighlight_kanji_assoc"], data => {
-						const info = data["wkhighlight_kanji_assoc"];
-						if (info)
-							detailsPopup.update(info[node.textContent], true);
-					});
-				}
-		
+					//console.log("(sw)update.vocab:"+node.textContent+"='"+vocabAssoc[node.textContent]+"'");
+					if (vocabAssoc[node.textContent]) {
+						detailsPopup.update(vocabAssoc[node.textContent], true);
+					} else {
+						//console.log("(sw)update.kanji:"+node.textContent+"='"+kanjiAssoc[node.textContent]+"'");
+						if (kanjiAssoc[node.textContent]) {
+							detailsPopup.update(kanjiAssoc[node.textContent], true);
+						};
+					};
+				};
 			});
-	
+
 			document.addEventListener("click", e => {
 				const node = e.target;
 								

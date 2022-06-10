@@ -1,3 +1,4 @@
+
 (function () {
 	// constructor
 	const Highlight = function(characters, highlightClass, otherClasses, unwantedTags, tagFilter) {
@@ -43,6 +44,130 @@
 
 	// check if node has children with text
 	const textChildNodes = obj => Array.from(obj.childNodes).filter(node => node.nodeName === "#text");
+    
+	const vocabAssoc = {};
+	chrome.storage.local.get(["wkhighlight_vocab_assoc"], data => {
+		Object.assign(vocabAssoc, data["wkhighlight_vocab_assoc"]);
+	});
+	const kanjiAssoc = {};
+	chrome.storage.local.get(["wkhighlight_kanji_assoc"], data => {
+		Object.assign(kanjiAssoc, data["wkhighlight_kanji_assoc"]);
+	});
+
+// Generated
+
+function isKanji(ch) {
+    return (("\u4e00" <= ch) && (ch <= "\u9faf"));
+}
+
+
+function matchVocab(text) {
+  /*[日,本,人] = matchVocab("さくらは日本人です。") */
+  var match, split, vocab, pos;
+  match = [];
+  split = [];
+  pos = 0;
+  kanaRoot = 0;
+  vocabRoot = 0;
+  vocab = "";
+  kanaTail = "";
+  kanaHead = "";
+  //console.log("text='"+text+"'");
+  for (var ch, _pj_c = 0, _pj_a = text, _pj_b = _pj_a.length; _pj_c < _pj_b; _pj_c += 1) {
+    ch = _pj_a[_pj_c];
+
+    if (isKanji(ch)) {
+      //console.log('。' + vocab + ch+ '。');
+	  //console.log("kanjiTail="+kanaTail);
+	  if (vocab == "") {
+		  vocabRoot = pos;
+		  kanaTail = "";
+	  }
+	  if (kanaTail != "") {
+		if (vocab != "") {
+			// Already vocab there but it has ended in kanji sequence.
+			match = match.concat([vocab]);
+			if (vocabRoot > kanaRoot) {
+ 				split = split.concat([text.slice(kanaRoot, vocabRoot-kanaRoot)]);
+			} else { // No leading kana.
+				split = split.concat(['']);
+				//split = split.concat([kanaTail]);
+			}
+      		vocab = "";
+			vocabRoot = pos;
+			kanaRoot = pos - kanaTail.length;
+			kanaHead = kanaTail; //kanaTail = "";
+	 	}
+	  }
+	  if (vocabAssoc[vocab+ch] || kanjiAssoc[vocab+ch]) {
+		//console.log("vocabAssoc("+vocab+ch+")='"+vocabAssoc[vocab + ch]+"'");
+        vocab = vocab + ch;
+      } else {
+		if (vocab != "") {
+			// Already vocab there but it has ended in kanji sequence.
+			match = match.concat([vocab]);
+			kanaRoot -= kanaTail.length;
+			if (vocabRoot > kanaRoot) {
+ 				split = split.concat([text.slice(kanaRoot, vocabRoot-kanaRoot)]);
+			} else {
+				split = split.concat([""]);
+			}
+      		vocab = ch;
+			vocabRoot = pos;
+			kanaRoot = pos - kanaTail.length;
+			kanaTail = "";
+	 	}
+      }
+    } else { // Kana
+		// 食べ ない, 食べ た, 食べ なかった
+		//if (ch != '\n') console.log("ch='"+ch+"'");
+		kanaTail = kanaTail+ch;
+		//if (ch != '\n') console.log("kanaTail='"+kanaTail+"'");
+		if ((ch == 'る') || (ch == 'ぶ')) {
+			// Verb ?
+			console.log("ru/bu:"+vocab + kanaTail);
+			if (vocab != "") {
+				if (vocabAssoc[vocab+kanaTail]) {
+					//console.log("vocabAssoc("+vocab+kanaTail+")='"+vocabAssoc[vocab + kanaTail]+"'");
+					vocab = vocab + kanaTail
+					match = match.concat([vocab]);
+					if (vocabRoot > kanaRoot) {
+						split = split.concat([text.slice(kanaRoot, vocabRoot-kanaRoot+1)]);
+					} else { // No leading kana.
+						split = split.concat(['']);
+					}
+					vocab = "";
+					kanaTail = "";
+					vocabRoot = pos+1;
+					kanaRoot = pos+1;
+				}
+			}
+		} else {
+			if ((vocab != "") && (kanaTail.length > 1)) {
+				// Give up for parsing trail.
+				match = match.concat([vocab]);
+				if (vocabRoot > kanaRoot) {
+					split = split.concat([text.slice(kanaRoot, vocabRoot-kanaRoot)+kanaHead]);
+				} else { // No leading kana.
+					split =split.concat(['']);
+				}
+				vocabRoot = pos+1 - kanaTail.length;
+				kanaRoot = pos+1 - kanaTail.length + kanaHead.length;
+				kanaHead = "";
+				vocab = "";
+				kanaTail = "";
+			}
+ 		}
+    }
+	pos += 1;
+  }
+  split = split.concat([text.slice(kanaRoot)]);
+  //console.log(split);
+  return [match, split];
+}
+  
+	  // Generated>
+	/**/
 
 	// replace a matching regex in a text node with a document element, preserving everything else, even other 
 	// none text node siblings from that text node (the parent node must have atleast one text node as a childNode)
@@ -51,11 +176,18 @@
 		
 		textChildNodes(parentNode).forEach(node => {
 			const fragment = document.createDocumentFragment();
-			const matches = node.textContent.match(regex);
-			if (matches) {
-				const split = node.textContent.split(regex);
+			// textContent = "さくらは日本人です。"
+			// split = [さくらは,",です]
+			// matches = [日本,人]
+			const matchesSplit = matchVocab(node.textContent);
+			const matches = matchesSplit[0];
+			const split   = matchesSplit[1];
+			if (matches.length > 0) {
+				console.log("'"+node.textContent+"'");
+				console.log(matches);
+				console.log(split); 
 				split.forEach((content, i) => {
-					fragment.appendChild(document.createTextNode(content));
+					fragment.appendChild(document.createTextNode(content)); // Stuff between kanji.
 					if (i !== split.length-1) {
 						const clone = elem.cloneNode(true);
 						clone.appendChild(document.createTextNode(matches[i]));
